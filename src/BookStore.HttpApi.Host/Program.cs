@@ -1,10 +1,12 @@
 ﻿using System;
 using System.Threading.Tasks;
+using BookStore.EntityFrameworkCore;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
 using Serilog.Events;
+using Volo.Abp.Authorization;
 
 namespace BookStore;
 
@@ -29,9 +31,28 @@ public class Program
         {
             Log.Information("Starting BookStore.HttpApi.Host.");
             var builder = WebApplication.CreateBuilder(args);
-            builder.Host.AddAppSettingsSecretsJson()
-                .UseAutofac()
-                .UseSerilog();
+            //OpenIddict
+            builder.Services.AddOpenIddict().AddCore(options =>
+                {
+                    options.UseEntityFrameworkCore().UseDbContext<BookStoreDbContext>();
+                })
+                //"Authorization Code" і "Refresh Token" flow
+                .AddServer(options =>
+                {
+                    options.AllowAuthorizationCodeFlow().AllowRefreshTokenFlow();
+                    // set URI redirect
+                    options.SetAuthorizationEndpointUris("/connect/authorize")
+                        .SetTokenEndpointUris("/connect/token");
+                    //ASP.NET Core Identity use
+                    options.UseAspNetCore()
+                        .EnableTokenEndpointPassthrough()
+                        .EnableAuthorizationEndpointPassthrough()
+                        .EnableLogoutEndpointPassthrough();
+                    // Налаштовуємо захист через шифрування
+                    options.AddDevelopmentEncryptionCertificate()
+                        .AddDevelopmentSigningCertificate();
+                });
+            builder.Host.AddAppSettingsSecretsJson().UseAutofac().UseSerilog();
             await builder.AddApplicationAsync<BookStoreHttpApiHostModule>();
             var app = builder.Build();
             await app.InitializeApplicationAsync();
